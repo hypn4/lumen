@@ -17,10 +17,19 @@
     "ollama",
     "rag"
   ],
+  "userConfig": {
+    "node_command": {
+      "type": "string",
+      "title": "Node binary",
+      "description": "Path to the Node.js binary used to run the lumen launcher. Override (e.g. /opt/homebrew/bin/node) only when `node` is not visible to the spawn PATH.",
+      "default": "node"
+    }
+  },
   "mcpServers": {
     "lumen": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/run.cmd",
+      "command": "${user_config.node_command}",
       "args": [
+        "${CLAUDE_PLUGIN_ROOT}/launcher.mjs",
         "stdio"
       ]
     }
