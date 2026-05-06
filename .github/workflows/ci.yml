@@ -125,24 +125,29 @@ jobs:
           go-version: '1.26'
           cache: true
 
-      - name: Set up MSYS2 with sqlite3 dev (Windows)
+      - name: Provide sqlite3.h for cgo (Windows)
         if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          install: mingw-w64-x86_64-sqlite3
-          update: false
-          path-type: inherit
+        shell: bash
+        run: |
+          # The runner's MinGW gcc has no sqlite3 dev headers preinstalled,
+          # but mattn/go-sqlite3 (already a dependency) ships an identical
+          # sqlite3-binding.h. Copy it as sqlite3.h so sqlite-vec-go-bindings
+          # can compile. ABI matches automatically because both bindings link
+          # against the same mattn-bundled sqlite3 amalgamation.
+          go mod download github.com/mattn/go-sqlite3
+          SQLITE3_DIR=$(go list -m -f '{{.Dir}}' github.com/mattn/go-sqlite3)
+          mkdir -p "$GITHUB_WORKSPACE/sqlite-include"
+          cp "$SQLITE3_DIR/sqlite3-binding.h" "$GITHUB_WORKSPACE/sqlite-include/sqlite3.h"
+          # GITHUB_WORKSPACE is a Windows path here; convert backslashes for
+          # cgo's gcc invocation by piping through cygpath when bash is git-bash.
+          echo "CGO_CFLAGS=-I$(cygpath -m "$GITHUB_WORKSPACE/sqlite-include")" >> "$GITHUB_ENV"
 
       - name: Build
         shell: bash
         run: |
           VERSION=$(grep -o '"[0-9][^"]*"' .release-please-manifest.json | tr -d '"' | head -1)
           EXT=""
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            EXT=".exe"
-            export PATH="/c/msys64/mingw64/bin:$PATH"
-          fi
+          if [ "${{ runner.os }}" = "Windows" ]; then EXT=".exe"; fi
           CGO_ENABLED=1 go build -tags=fts5 \
             -ldflags="-X github.com/ory/lumen/cmd.buildVersion=$VERSION" \
             -o "bin/lumen$EXT" .
