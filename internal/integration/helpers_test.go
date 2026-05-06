@@ -101,13 +101,34 @@ func nodePath(t *testing.T) string {
 	return p
 }
 
+// sandboxTempDir returns an isolated temp dir whose cleanup tolerates
+// Windows file-locking errors. The SessionStart hook spawns a detached
+// background indexer (cmd/hook_spawn_windows.go) that opens debug.log and
+// index.db; on Windows those files cannot be unlinked while handles are
+// open, which makes t.TempDir() cleanup fail and mark the test FAIL even
+// though the test logic succeeded. Best-effort RemoveAll + log-on-error
+// preserves test correctness; CI runner resets sweep any residue.
+func sandboxTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "lumen-integration-")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Logf("sandbox cleanup non-fatal error (likely Windows handle held by background indexer): %v", err)
+		}
+	})
+	return dir
+}
+
 // sandboxEnv returns an env slice that points lumen at temp directories for
 // HOME / XDG_DATA_HOME / CLAUDE_PLUGIN_DATA so the runner's real lumen state
 // is untouched. PATH is preserved so node (and its children) can resolve.
 // LUMEN_BIN_PATH is forwarded so launcher.mjs uses the pre-built binary.
 func sandboxEnv(t *testing.T) []string {
 	t.Helper()
-	tmp := t.TempDir()
+	tmp := sandboxTempDir(t)
 	env := []string{
 		"HOME=" + tmp,
 		"XDG_DATA_HOME=" + tmp,
